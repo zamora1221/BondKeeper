@@ -1,0 +1,58 @@
+{# templates/people/_widget_last_checkin.html #}
+<div id="last-checkin-widget"
+     hx-get="{% url 'checkin_last_widget' person.pk %}"
+     hx-trigger="load, checkins_changed from:body"
+     hx-target="#last-checkin-widget"
+     hx-swap="outerHTML">
+
+  <style>
+    .lc-wrap { display:inline-block; margin-left:10px; }
+    .lc-box {
+      border: 2px solid #6b7280;   /* slate-500 */
+      border-radius: 12px;
+      background: #e5e7eb;         /* slate-200 */
+      padding: 6px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+    }
+    .lc-inner {
+      background: #f8fafc;         /* slate-50 */
+      border: 1px solid #cbd5e1;   /* slate-300 */
+      border-radius: 10px;
+      padding: 6px 12px;
+      text-align: center;
+      min-width: 220px;
+    }
+    .lc-number {
+      font-weight: 800;
+      font-size: 16px;
+      color: #111827;              /* gray-900 */
+      letter-spacing: .3px;
+    }
+    .lc-caption {
+      margin-top: 6px;
+      background: #dbeafe;         /* blue-100 */
+      color: #1e40af;              /* blue-800 */
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 2px 8px;
+      text-align: center;
+      line-height: 1.2;
+    }
+  </style>
+
+  <div class="lc-wrap">
+    <div class="lc-box">
+      <div class="lc-inner">
+        {% if days_since is not None %}
+          <div class="lc-number">
+            {{ days_since }} day{% if days_since != 1 %}s{% endif %}
+          </div>
+        {% else %}
+          <div class="lc-number">—</div>
+        {% endif %}
+        <div class="lc-caption">Days Since Last Check-In</div>
+      </div>
+    </div>
+  </div>
+</div>

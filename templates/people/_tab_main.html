@@ -1,0 +1,107 @@
+{# templates/people/_tab_main.html #}
+{% load static %}
+
+<!-- Header toolbar: Edit person opens modal -->
+<div class="card-header" style="display:flex; align-items:center; justify-content:space-between; gap:8px">
+  <h3 style="margin:0">{{ person.full_name|default:"Person" }}</h3>
+  {% if person %}
+  <div>
+    <button class="btn"
+            hx-get="{% url 'person_edit_partial' person.pk %}"
+            hx-target="#modal-body"
+            hx-swap="innerHTML"
+            onclick="document.getElementById('modal').showModal()">
+      Edit Person
+    </button>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+  .subtabs { display:flex; gap:6px; border-bottom:1px solid #e5e7eb; margin:8px 0 14px; }
+  .subtab { appearance:none; border:none; background:#f5f7fb; color:#334155;
+            padding:8px 12px; border-radius:8px 8px 0 0; cursor:pointer; font-weight:600; }
+  .subtab:hover { filter:brightness(0.97); }
+  .subtab.is-active { background:#ffffff; color:#0f172a; box-shadow:0 -1px 0 0 #ffffff inset; }
+  .subtab-pane { display:none; }
+  .subtab-pane.is-active { display:block; }
+  .kv { display:grid; grid-template-columns: 140px 1fr; gap:8px 12px; padding:6px 0; }
+  .kv label { color:#64748b; font-size:12px; }
+  .kv .v { color:#0f172a; }
+  .section { padding:8px 0 12px; }
+</style>
+
+<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:10px">
+  {% include "people/_widget_recent_court_date.html" %}
+  {% include "people/_widget_billing_summary.html" %}
+  {% include "people/_widget_last_checkin.html" %}
+</div>
+<div class="subtabs-root">
+  <div class="subtabs" id="profile-related-tabs">
+    <button class="subtab is-active" data-target="subtab-profile">Profile</button>
+    <button class="subtab" data-target="subtab-bonds">Bonds</button>
+    <button class="subtab" data-target="subtab-court-dates">Court Dates</button>
+    <button class="subtab" data-target="subtab-checkins">Check Ins</button>
+    <button class="subtab" data-target="subtab-invoices">Invoices/Receipts</button>
+  </div>
+
+  <!-- PROFILE (contact/address/details + indemnitors + references) -->
+  <div id="subtab-profile" class="subtab-pane is-active">
+    <div class="section">
+      <h4>Contact</h4>
+      <div class="kv"><label>Phone</label><div class="v">{{ person.phone|default:"-" }}</div></div>
+      <div class="kv"><label>Email</label><div class="v">{{ person.email|default:"-" }}</div></div>
+    </div>
+
+    <div class="section">
+      <h4>Address</h4>
+      <div class="kv"><label>Street</label><div class="v">{{ person.address|default:"-" }}</div></div>
+      <div class="kv"><label>City</label><div class="v">{{ person.city|default:"-" }}</div></div>
+      <div class="kv"><label>State</label><div class="v">{{ person.state|default:"-" }}</div></div>
+      <div class="kv"><label>ZIP</label><div class="v">{{ person.zip|default:"-" }}</div></div>
+    </div>
+
+    <div class="section">
+      <h4>Details</h4>
+      <div class="kv"><label>DOB</label><div class="v">{{ person.dob|date:"Y-m-d"|default:"-" }}</div></div>
+      <div class="kv"><label>Alias</label><div class="v">{{ person.alias|default:"-" }}</div></div>
+      <div class="kv"><label>Notes</label><div class="v">{{ person.notes|default:"" }}</div></div>
+    </div>
+
+    {# single sources of truth: include the sections only #}
+    {% include "people/_section_indemnitors.html" %}
+    {% include "people/_section_references.html" %}
+  </div>
+
+  <!-- BONDS tab -->
+  <div id="subtab-bonds" class="subtab-pane">
+    {% include "people/_section_bonds.html" %}
+  </div>
+<div id="subtab-court-dates" class="subtab-pane">
+  {% include "people/_section_court_dates.html" %}
+</div>
+<div id="subtab-checkins" class="subtab-pane">
+  {% include "people/_section_checkins.html" %}
+</div>
+  <div id="subtab-invoices" class="subtab-pane">
+  {% include "people/_section_invoices.html" %}
+</div>
+
+</div>
+
+<script>
+  (function () {
+    const root = document.currentScript.closest('.subtabs-root') || document;
+    const tabs = root.querySelector('#profile-related-tabs');
+    if (!tabs) return;
+    tabs.addEventListener('click', function (e) {
+      const btn = e.target.closest('.subtab'); if (!btn) return;
+      const targetId = btn.getAttribute('data-target');
+      root.querySelectorAll('.subtab').forEach(b => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      root.querySelectorAll('.subtab-pane').forEach(p => p.classList.remove('is-active'));
+      const pane = root.querySelector('#' + targetId);
+      if (pane) pane.classList.add('is-active');
+    });
+  })();
+</script>

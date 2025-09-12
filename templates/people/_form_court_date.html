@@ -1,0 +1,34 @@
+{# templates/people/_form_court_date.html #}
+<form method="post"
+      hx-post="{{ post_url|default:request.path }}"
+      hx-target="#court-dates-section"
+      hx-swap="outerHTML"
+      hx-on:htmx:afterRequest="if (event.detail.xhr.status < 400) document.getElementById('modal')?.close()">
+  {% csrf_token %}
+
+  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
+    <label>Date
+      <input type="date" name="date" value="{{ form.date.value|default_if_none:'' }}">
+    </label>
+    <label>Time
+      <input type="time" name="time" value="{{ form.time.value|default_if_none:'' }}">
+    </label>
+    <label style="grid-column:1 / -1">Court
+      <input type="text" name="court" value="{{ form.court.value|default_if_none:'' }}">
+    </label>
+    <label>Location
+      <input type="text" name="location" value="{{ form.location.value|default_if_none:'' }}">
+    </label>
+    <label>Case #
+      <input type="text" name="case_number" value="{{ form.case_number.value|default_if_none:'' }}">
+    </label>
+    <label style="grid-column:1 / -1">Notes
+      <textarea name="notes" rows="3">{{ form.notes.value|default_if_none:'' }}</textarea>
+    </label>
+  </div>
+
+  <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end">
+    <button type="button" class="btn" onclick="document.getElementById('modal').close()">Cancel</button>
+    <button type="submit" class="btn primary">{% if court_date %}Save{% else %}Create{% endif %}</button>
+  </div>
+</form>
