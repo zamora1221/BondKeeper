@@ -15,15 +15,37 @@ import logging
 
 log = logging.getLogger(__name__)
 
+@require_http_methods(["GET"])
 def tab_main(request, pk):
     try:
         person = get_object_or_404(Person, pk=pk)
         q = (request.GET.get("q") or "").strip()
-        # ... rest of your logic ...
-        return render(request, "tabs/main.html", {"person": person, "q": q})
+        # TODO: whatever you do with q/person; guard nulls:
+        #   - if you format dates, use template filters instead of strftime
+        #   - if you access related objects, use .select_related(...) or handle None
+        ctx = {"person": person, "q": q}
+        return render(request, "tabs/main.html", ctx)
     except Exception:
         log.exception("tab_main crashed for pk=%s", pk)
-        return HttpResponse("Server error", status=500)
+        # Return a short note so HTMX doesn’t silently fail:
+        return render(request, "partials/error.html", status=500)
+
+@require_http_methods(["GET", "POST"])
+def new_partial(request):
+    try:
+        if request.method == "POST":
+            # Make sure CSRF is present on POST from the template/JS
+            form = MyForm(request.POST)
+            if form.is_valid():
+                obj = form.save()
+                return render(request, "partials/new_success.html", {"obj": obj})
+            return render(request, "partials/new_form.html", {"form": form}, status=400)
+        else:
+            form = MyForm()
+            return render(request, "partials/new_form.html", {"form": form})
+    except Exception:
+        log.exception("new_partial crashed")
+        return render(request, "partials/error.html", status=500)
         
 @login_required
 def people_home(request):
