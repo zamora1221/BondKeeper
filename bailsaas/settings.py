@@ -69,8 +69,7 @@ DATABASES = {
     }
 }
 
-database_url = os.environ.get("DATABSE_URL")
-DATABASES["default"]= dj_database_url.parse(database_url)
+
 
 AUTH_PASSWORD_VALIDATORS = []
 
