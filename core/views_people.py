@@ -11,7 +11,20 @@ from decimal import Decimal
 from django.db.models import Sum, Max
 from django.utils import timezone
 from datetime import datetime
+import logging
 
+log = logging.getLogger(__name__)
+
+def tab_main(request, pk):
+    try:
+        person = get_object_or_404(Person, pk=pk)
+        q = (request.GET.get("q") or "").strip()
+        # ... rest of your logic ...
+        return render(request, "tabs/main.html", {"person": person, "q": q})
+    except Exception:
+        log.exception("tab_main crashed for pk=%s", pk)
+        return HttpResponse("Server error", status=500)
+        
 @login_required
 def people_home(request):
     return render(request, 'people/home.html', {})
