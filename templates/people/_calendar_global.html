@@ -1,75 +1,99 @@
 {# templates/people/_calendar_global.html #}
-{% load humanize %}
-
 <style>
-  .cal-wrap { display:block; }
-  .cal-day { margin: 10px 0 16px; padding: 8px 10px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; }
-  .cal-day h4 { margin:0 0 8px; font-size:14px; color:#0f172a; display:flex; justify-content:space-between; align-items:center; }
-  .cal-empty { padding: 12px; color:#64748b; font-style:italic; }
-  .cal-item { display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-top:1px dashed #e5e7eb; }
-  .cal-item:first-child { border-top:none; }
-  .cal-time { width:72px; flex:0 0 72px; color:#334155; font-weight:600; }
-  .cal-badge { display:inline-block; font-size:12px; padding:2px 6px; border-radius:999px; border:1px solid #e5e7eb; background:#f8fafc; color:#334155; }
-  .cal-title { color:#0f172a; }
-  .muted { color:#64748b; }
+  .cal-wrap { padding: 6px; }
+  .cal-toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:8px; }
+  .cal-title { font-weight:700; font-size:16px; }
+  .cal-nav { display:flex; gap:6px; }
+  .btn.sm { font-size:12px; padding:6px 8px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; cursor:pointer; }
+  .btn.sm:hover { background:#f9fafb; }
+
+  .cal-grid {
+    display:grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+  .cal-dow {
+    text-align:center; font-size:12px; color:#64748b; padding:4px 0;
+  }
+  .cal-cell {
+    border:1px solid #e5e7eb; border-radius:10px; min-height:110px; background:#fff;
+    display:flex; flex-direction:column; padding:6px; overflow:hidden;
+  }
+  .cal-date {
+    font-size:12px; color:#334155; font-weight:600; display:flex; align-items:center; justify-content:space-between;
+  }
+  .cal-date .badge-today {
+    font-size:10px; padding:2px 6px; border-radius:999px; background:#e0f2fe; color:#0369a1; margin-left:6px;
+  }
+  .cal-cell.dim .cal-date { color:#94a3b8; }
+  .cal-items { margin-top:6px; display:flex; flex-direction:column; gap:4px; overflow:auto; }
+  .cal-item {
+    font-size:12px; line-height:1.25; padding:6px; border:1px solid #e5e7eb; border-radius:8px; background:#f8fafc;
+  }
+  .cal-item .time { font-weight:600; margin-right:6px; }
+  .cal-empty { font-size:12px; color:#cbd5e1; padding:6px; }
 </style>
 
 <div class="cal-wrap">
-  {% if by_day %}
-    {% for day, entries in by_day.items %}
-      <div class="cal-day">
-        <h4>
-          <span>{{ day|date:"D, M j, Y" }}</span>
-          <span class="muted">{{ entries|length }} item{{ entries|length|pluralize }}</span>
-        </h4>
-
-        {% for e in entries %}
-          <div class="cal-item">
-            <div class="cal-time">
-              {{ e.dt|date:"g:i a" }}
-            </div>
-            <div class="cal-body">
-              {% if e.type == "court" %}
-                <div class="cal-title">
-                  <span class="cal-badge">Court</span>
-                  &nbsp;
-                  {{ e.person.full_name|default:"(no name)" }}
-                </div>
-                <div class="muted">
-                  {% with cd=e.obj %}
-                    {% if cd.court %}Court: {{ cd.court }}{% endif %}
-                    {% if cd.location %}{% if cd.court %} • {% endif %}Loc: {{ cd.location }}{% endif %}
-                    {% if cd.county %} • County: {{ cd.county }}{% endif %}
-                    {% if cd.case_number %} • Case #: {{ cd.case_number }}{% endif %}
-                  {% endwith %}
-                </div>
-              {% elif e.type == "checkin" %}
-                <div class="cal-title">
-                  <span class="cal-badge">Check-in</span>
-                  &nbsp;
-                  {{ e.person.full_name|default:"(no name)" }}
-                </div>
-                <div class="muted">
-                  {% with ci=e.obj %}
-                    Method: {{ ci.get_method_display }}{% if ci.phone %} • {{ ci.phone }}{% endif %}
-                    {% if ci.address %} • {{ ci.address }}{% endif %}
-                  {% endwith %}
-                </div>
-              {% else %}
-                <div class="cal-title">
-                  <span class="cal-badge">Other</span>
-                  &nbsp;
-                  {{ e.person.full_name|default:"(no name)" }}
-                </div>
-              {% endif %}
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    {% endfor %}
-  {% else %}
-    <div class="cal-empty">
-      No calendar items between {{ start|date:"M j" }} and {{ end|date:"M j" }}.
+  <div class="cal-toolbar">
+    <div class="cal-title">
+      {{ month_start|date:"F Y" }}
     </div>
-  {% endif %}
+    <div class="cal-nav">
+      <button class="btn sm"
+              hx-get="{% url 'calendar_partial' %}{{ prev_qs }}"
+              hx-target="#subtab-calendar-global"
+              hx-swap="innerHTML"
+              aria-label="Previous month">&larr; Prev</button>
+
+      <button class="btn sm"
+              hx-get="{% url 'calendar_partial' %}?month={{ today|date:"Y-m" }}"
+              hx-target="#subtab-calendar-global"
+              hx-swap="innerHTML">Today</button>
+
+      <button class="btn sm"
+              hx-get="{% url 'calendar_partial' %}{{ next_qs }}"
+              hx-target="#subtab-calendar-global"
+              hx-swap="innerHTML"
+              aria-label="Next month">Next &rarr;</button>
+    </div>
+  </div>
+
+  {# Day-of-week header (Sun..Sat) #}
+  <div class="cal-grid">
+    {% for dow in "Sun,Mon,Tue,Wed,Thu,Fri,Sat".split(",") %}
+      <div class="cal-dow">{{ dow }}</div>
+    {% endfor %}
+  </div>
+
+  {# 6-week grid #}
+  <div class="cal-grid">
+    {% for d in days %}
+      {% with is_other=(d.month != month_start.month) is_today=(d == today) day_items=by_day.d %}
+      <div class="cal-cell {% if is_other %}dim{% endif %}">
+        <div class="cal-date">
+          <span>{{ d.day }}</span>
+          {% if is_today %}<span class="badge-today">Today</span>{% endif %}
+        </div>
+
+        <div class="cal-items">
+          {% if day_items %}
+            {% for cd in day_items %}
+              <div class="cal-item">
+                {% if cd.time %}
+                  <span class="time">{{ cd.time|time:"g:i A" }}</span>
+                {% endif %}
+                <span class="who">{{ cd.person.full_name|default:"Person" }}</span>
+                {% if cd.court %}<span class="court"> • {{ cd.court }}</span>{% endif %}
+                {% if cd.county %}<span class="county"> • {{ cd.county }}</span>{% endif %}
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="cal-empty">—</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endwith %}
+    {% endfor %}
+  </div>
 </div>
