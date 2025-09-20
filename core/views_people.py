@@ -29,6 +29,7 @@ from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
 from django.core.files.uploadedfile import UploadedFile
+import datetime as dt
 
 # CSV → model field suggestions
 HEADER_SYNONYMS: Dict[str, List[str]] = {
@@ -873,22 +874,20 @@ def court_calendar(request):
     qs = sorted(qs, key=_court_dt)
     return render(request, "calendar/main.html", {"items": qs, "agency": agency, "county": county})
 
-def _ensure_aware(dt: datetime.datetime | None) -> datetime.datetime | None:
-    """Make a datetime timezone-aware in the current timezone if it's naive."""
-    if dt is None:
+def _ensure_aware(d: dt.datetime | None) -> dt.datetime | None:
+    if d is None:
         return None
-    if timezone.is_naive(dt):
-        return timezone.make_aware(dt, timezone.get_current_timezone())
-    return dt
+    if timezone.is_naive(d):
+        return timezone.make_aware(d, timezone.get_current_timezone())
+    return d
 
-def _combine_date_time_aware(d: datetime.date | None, t: datetime.time | None) -> datetime.datetime | None:
-    """Combine DateField + TimeField into an aware datetime (defaults to 00:00 if time missing)."""
+def _combine_date_time_aware(d: dt.date | None, t: dt.time | None) -> dt.datetime | None:
     if not d:
         return None
     if t is None:
-        t = datetime.time(0, 0)
-    naive = datetime.datetime.combine(d, t)
-    return _ensure_aware(naive)
+        t = dt.time(0, 0)
+    return _ensure_aware(dt.datetime.combine(d, t))
+
     
 @login_required
 def person_calendar_partial(request, person_pk):
@@ -943,58 +942,49 @@ from django.views.decorators.http import require_GET
 @login_required
 @require_GET
 def calendar_partial(request):
-    """
-    Global calendar pane: mixes CourtDate (date+time) and CheckIn(created_at) into one timeline.
-    Everything is converted to timezone-aware datetimes so sorting never crashes on Render.
-    """
-    tenant = getattr(request, "tenant", None)  # your TenantAttachMiddleware should set this
+    tenant = getattr(request, "tenant", None)
     if tenant is None and hasattr(request.user, "tenant_profile"):
-        tenant = request.user.tenant_profile  # fallback if your middleware isn't attached
+        tenant = request.user.tenant_profile
 
-    # Time window: last 7 days .. next 90 days (tweak as you like)
     now = timezone.now()
-    start = timezone.localdate(now) - datetime.timedelta(days=7)
-    end   = timezone.localdate(now) + datetime.timedelta(days=90)
+    start = timezone.localdate(now) - dt.timedelta(days=7)
+    end   = timezone.localdate(now) + dt.timedelta(days=90)
 
-    # --- Query your data ---
-    court_dates_qs = (CourtDate.objects
-                      .filter(tenant=tenant, date__gte=start, date__lte=end)
-                      .select_related("person")
-                      .order_by("date", "time", "id"))
+    court_dates_qs = (
+        CourtDate.objects
+        .filter(tenant=tenant, date__gte=start, date__lte=end)
+        .select_related("person")
+        .order_by("date", "time", "id")
+    )
 
-    checkins_qs = (CheckIn.objects
-                   .filter(tenant=tenant,
-                           created_at__gte=_ensure_aware(datetime.datetime.combine(start, datetime.time(0,0))),
-                           created_at__lte=_ensure_aware(datetime.datetime.combine(end,   datetime.time(23,59,59))))
-                   .select_related("person")
-                   .order_by("-created_at"))
+    # Make aware datetimes for start/end bounds
+    start_dt = _ensure_aware(dt.datetime.combine(start, dt.time(0, 0)))
+    end_dt   = _ensure_aware(dt.datetime.combine(end,   dt.time(23, 59, 59)))
 
-    # --- Normalize to aware datetimes & collect ---
-    items: list[tuple[datetime.datetime, dict]] = []
+    checkins_qs = (
+        CheckIn.objects
+        .filter(tenant=tenant, created_at__gte=start_dt, created_at__lte=end_dt)
+        .select_related("person")
+        .order_by("-created_at")
+    )
+
+    items: list[tuple[dt.datetime, dict]] = []
 
     for cd in court_dates_qs:
-        dt = _combine_date_time_aware(cd.date, cd.time)
-        if dt:
-            items.append((
-                dt,
-                {"type": "court", "dt": dt, "obj": cd, "person": cd.person}
-            ))
+        when = _combine_date_time_aware(cd.date, cd.time)
+        if when:
+            items.append((when, {"type": "court", "dt": when, "obj": cd, "person": cd.person}))
 
     for ci in checkins_qs:
-        dt = _ensure_aware(ci.created_at)
-        if dt:
-            items.append((
-                dt,
-                {"type": "checkin", "dt": dt, "obj": ci, "person": ci.person}
-            ))
+        when = _ensure_aware(ci.created_at)
+        if when:
+            items.append((when, {"type": "checkin", "dt": when, "obj": ci, "person": ci.person}))
 
-    # --- Sort safely (all keys are aware now) ---
     items.sort(key=lambda x: x[0])
 
-    # --- Group by local day for display (optional) ---
-    by_day: dict[datetime.date, list[dict]] = {}
-    for dt, meta in items:
-        day = timezone.localtime(dt).date()
+    by_day: dict[dt.date, list[dict]] = {}
+    for when, meta in items:
+        day = timezone.localtime(when).date()
         by_day.setdefault(day, []).append(meta)
 
     return render(request, "people/_calendar_global.html", {
@@ -1003,7 +993,6 @@ def calendar_partial(request):
         "start": start,
         "end": end,
     })
-
 @login_required
 def person_calendar_ics(request, person_pk):
     """ICS feed for a single person's court dates."""
