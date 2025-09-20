@@ -60,40 +60,39 @@
   </div>
 
   {# Day-of-week header (Sun..Sat) #}
-  <div class="cal-grid">
-    {% for dow in "Sun,Mon,Tue,Wed,Thu,Fri,Sat".split(",") %}
-      <div class="cal-dow">{{ dow }}</div>
-    {% endfor %}
-  </div>
-
-  {# 6-week grid #}
-  <div class="cal-grid">
-    {% for d in days %}
-      {% with is_other=(d.month != month_start.month) is_today=(d == today) day_items=by_day.d %}
-      <div class="cal-cell {% if is_other %}dim{% endif %}">
-        <div class="cal-date">
-          <span>{{ d.day }}</span>
-          {% if is_today %}<span class="badge-today">Today</span>{% endif %}
-        </div>
-
-        <div class="cal-items">
-          {% if day_items %}
-            {% for cd in day_items %}
-              <div class="cal-item">
-                {% if cd.time %}
-                  <span class="time">{{ cd.time|time:"g:i A" }}</span>
-                {% endif %}
-                <span class="who">{{ cd.person.full_name|default:"Person" }}</span>
-                {% if cd.court %}<span class="court"> • {{ cd.court }}</span>{% endif %}
-                {% if cd.county %}<span class="county"> • {{ cd.county }}</span>{% endif %}
-              </div>
-            {% endfor %}
-          {% else %}
-            <div class="cal-empty">—</div>
-          {% endif %}
-        </div>
-      </div>
-      {% endwith %}
-    {% endfor %}
-  </div>
+  <!-- DOW header -->
+<div class="cal-grid">
+  {% for dow in dows %}
+    <div class="cal-dow">{{ dow }}</div>
+  {% endfor %}
 </div>
+
+<!-- 6-week grid -->
+<div class="cal-grid">
+  {% for cell in grid %}
+    <div class="cal-cell {% if cell.is_other %}dim{% endif %}">
+      <div class="cal-date">
+        <span>{{ cell.date.day }}</span>
+        {% if cell.is_today %}<span class="badge-today">Today</span>{% endif %}
+      </div>
+
+      <div class="cal-items">
+        {% if cell.items %}
+          {% for cd in cell.items %}
+            <div class="cal-item">
+              {% if cd.time %}
+                <span class="time">{{ cd.time|time:"g:i A" }}</span>
+              {% endif %}
+              <span class="who">{{ cd.person.full_name|default:"Person" }}</span>
+              {% if cd.court %}<span class="court"> • {{ cd.court }}</span>{% endif %}
+              {% if cd.county %}<span class="county"> • {{ cd.county }}</span>{% endif %}
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="cal-empty">—</div>
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
