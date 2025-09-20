@@ -873,6 +873,22 @@ def court_calendar(request):
     qs = sorted(qs, key=_court_dt)
     return render(request, "calendar/main.html", {"items": qs, "agency": agency, "county": county})
 
+def _ensure_aware(dt: datetime.datetime) -> datetime.datetime:
+    """Make a datetime timezone-aware in the current timezone if it's naive."""
+    if dt is None:
+        return None
+    if timezone.is_naive(dt):
+        return timezone.make_aware(dt, timezone.get_current_timezone())
+    return dt
+
+def _combine_date_time_aware(d: datetime.date, t: datetime.time | None) -> datetime.datetime | None:
+    """Combine DateField + TimeField into an aware datetime (defaults 00:00)."""
+    if not d:
+        return None
+    if t is None:
+        t = datetime.time(0, 0)
+    naive = datetime.datetime.combine(d, t)
+    return _ensure_aware(naive)
 
 @login_required
 def person_calendar_partial(request, person_pk):
@@ -942,11 +958,23 @@ def calendar_partial(request):
 
     # Collect all court dates in this month
     items = []
-    for cd in CourtDate.objects.select_related("person"):
-        dt = _court_dt(cd)
-        if first_day <= dt.date() <= last_day:
-            items.append((dt, cd))
-    items.sort(key=lambda x: x[0])
+
+# Example for CourtDate entries:
+for cd in court_dates_qs:
+    dt = _combine_date_time_aware(cd.date, cd.time)   # <-- ensure aware
+    if dt:
+        items.append((dt, {"type": "court", "obj": cd}))
+
+# Example for CheckIn (already aware, but normalize anyway):
+for ci in checkins_qs:
+    dt = _ensure_aware(ci.created_at)                 # <-- ensure aware
+    if dt:
+        items.append((dt, {"type": "checkin", "obj": ci}))
+
+# (Do the same for any other sources you include.)
+# Finally, sort safely:
+items.sort(key=lambda x: x[0])
+
 
     # Group by day number for template
     by_day = {}
