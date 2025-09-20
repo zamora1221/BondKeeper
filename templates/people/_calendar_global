@@ -1,0 +1,75 @@
+{# templates/people/_calendar_global.html #}
+{% load humanize %}
+
+<style>
+  .cal-wrap { display:block; }
+  .cal-day { margin: 10px 0 16px; padding: 8px 10px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; }
+  .cal-day h4 { margin:0 0 8px; font-size:14px; color:#0f172a; display:flex; justify-content:space-between; align-items:center; }
+  .cal-empty { padding: 12px; color:#64748b; font-style:italic; }
+  .cal-item { display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-top:1px dashed #e5e7eb; }
+  .cal-item:first-child { border-top:none; }
+  .cal-time { width:72px; flex:0 0 72px; color:#334155; font-weight:600; }
+  .cal-badge { display:inline-block; font-size:12px; padding:2px 6px; border-radius:999px; border:1px solid #e5e7eb; background:#f8fafc; color:#334155; }
+  .cal-title { color:#0f172a; }
+  .muted { color:#64748b; }
+</style>
+
+<div class="cal-wrap">
+  {% if by_day %}
+    {% for day, entries in by_day.items %}
+      <div class="cal-day">
+        <h4>
+          <span>{{ day|date:"D, M j, Y" }}</span>
+          <span class="muted">{{ entries|length }} item{{ entries|length|pluralize }}</span>
+        </h4>
+
+        {% for e in entries %}
+          <div class="cal-item">
+            <div class="cal-time">
+              {{ e.dt|date:"g:i a" }}
+            </div>
+            <div class="cal-body">
+              {% if e.type == "court" %}
+                <div class="cal-title">
+                  <span class="cal-badge">Court</span>
+                  &nbsp;
+                  {{ e.person.full_name|default:"(no name)" }}
+                </div>
+                <div class="muted">
+                  {% with cd=e.obj %}
+                    {% if cd.court %}Court: {{ cd.court }}{% endif %}
+                    {% if cd.location %}{% if cd.court %} • {% endif %}Loc: {{ cd.location }}{% endif %}
+                    {% if cd.county %} • County: {{ cd.county }}{% endif %}
+                    {% if cd.case_number %} • Case #: {{ cd.case_number }}{% endif %}
+                  {% endwith %}
+                </div>
+              {% elif e.type == "checkin" %}
+                <div class="cal-title">
+                  <span class="cal-badge">Check-in</span>
+                  &nbsp;
+                  {{ e.person.full_name|default:"(no name)" }}
+                </div>
+                <div class="muted">
+                  {% with ci=e.obj %}
+                    Method: {{ ci.get_method_display }}{% if ci.phone %} • {{ ci.phone }}{% endif %}
+                    {% if ci.address %} • {{ ci.address }}{% endif %}
+                  {% endwith %}
+                </div>
+              {% else %}
+                <div class="cal-title">
+                  <span class="cal-badge">Other</span>
+                  &nbsp;
+                  {{ e.person.full_name|default:"(no name)" }}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="cal-empty">
+      No calendar items between {{ start|date:"M j" }} and {{ end|date:"M j" }}.
+    </div>
+  {% endif %}
+</div>
