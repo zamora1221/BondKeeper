@@ -873,7 +873,7 @@ def court_calendar(request):
     qs = sorted(qs, key=_court_dt)
     return render(request, "calendar/main.html", {"items": qs, "agency": agency, "county": county})
 
-def _ensure_aware(dt: datetime.datetime) -> datetime.datetime:
+def _ensure_aware(dt: datetime.datetime | None) -> datetime.datetime | None:
     """Make a datetime timezone-aware in the current timezone if it's naive."""
     if dt is None:
         return None
@@ -881,15 +881,15 @@ def _ensure_aware(dt: datetime.datetime) -> datetime.datetime:
         return timezone.make_aware(dt, timezone.get_current_timezone())
     return dt
 
-def _combine_date_time_aware(d: datetime.date, t: datetime.time | None) -> datetime.datetime | None:
-    """Combine DateField + TimeField into an aware datetime (defaults 00:00)."""
+def _combine_date_time_aware(d: datetime.date | None, t: datetime.time | None) -> datetime.datetime | None:
+    """Combine DateField + TimeField into an aware datetime (defaults to 00:00 if time missing)."""
     if not d:
         return None
     if t is None:
         t = datetime.time(0, 0)
     naive = datetime.datetime.combine(d, t)
     return _ensure_aware(naive)
-
+    
 @login_required
 def person_calendar_partial(request, person_pk):
     person = get_object_or_404(Person, pk=person_pk)
@@ -940,62 +940,68 @@ def person_calendar_partial(request, person_pk):
     return render(request, "people/_tab_calendar.html", ctx)
 
 @login_required
+@require_GET
 def calendar_partial(request):
-    """Global month grid of all CourtDate items (does not replace other tabs)."""
-    today = timezone.localdate()
-    y = int(request.GET.get("y", today.year))
-    m = int(request.GET.get("m", today.month))
+    """
+    Global calendar pane: mixes CourtDate (date+time) and CheckIn(created_at) into one timeline.
+    Everything is converted to timezone-aware datetimes so sorting never crashes on Render.
+    """
+    tenant = getattr(request, "tenant", None)  # your TenantAttachMiddleware should set this
+    if tenant is None and hasattr(request.user, "tenant_profile"):
+        tenant = request.user.tenant_profile  # fallback if your middleware isn't attached
 
-    # normalize month bounds
-    if m < 1:
-        y -= 1; m = 12
-    elif m > 12:
-        y += 1; m = 1
+    # Time window: last 7 days .. next 90 days (tweak as you like)
+    now = timezone.now()
+    start = timezone.localdate(now) - datetime.timedelta(days=7)
+    end   = timezone.localdate(now) + datetime.timedelta(days=90)
 
-    first_day = date(y, m, 1)
-    _, days_in_month = monthrange(y, m)
-    last_day = date(y, m, days_in_month)
+    # --- Query your data ---
+    court_dates_qs = (CourtDate.objects
+                      .filter(tenant=tenant, date__gte=start, date__lte=end)
+                      .select_related("person")
+                      .order_by("date", "time", "id"))
 
-    # Collect all court dates in this month
-    items = []
+    checkins_qs = (CheckIn.objects
+                   .filter(tenant=tenant,
+                           created_at__gte=_ensure_aware(datetime.datetime.combine(start, datetime.time(0,0))),
+                           created_at__lte=_ensure_aware(datetime.datetime.combine(end,   datetime.time(23,59,59))))
+                   .select_related("person")
+                   .order_by("-created_at"))
 
-    # Court dates -> aware datetimes
+    # --- Normalize to aware datetimes & collect ---
+    items: list[tuple[datetime.datetime, dict]] = []
+
     for cd in court_dates_qs:
-        dt = _combine_date_time_aware(cd.date, cd.time)  # returns aware dt (see helper we added)
+        dt = _combine_date_time_aware(cd.date, cd.time)
         if dt:
-            items.append((dt, {"type": "court", "obj": cd}))
+            items.append((
+                dt,
+                {"type": "court", "dt": dt, "obj": cd, "person": cd.person}
+            ))
 
-    # Check-ins -> already aware, but normalize
     for ci in checkins_qs:
         dt = _ensure_aware(ci.created_at)
         if dt:
-            items.append((dt, {"type": "checkin", "obj": ci}))
+            items.append((
+                dt,
+                {"type": "checkin", "dt": dt, "obj": ci, "person": ci.person}
+            ))
 
-    # (Do the same for any other sources you include.)
-    # Finally, sort safely:
+    # --- Sort safely (all keys are aware now) ---
     items.sort(key=lambda x: x[0])
 
+    # --- Group by local day for display (optional) ---
+    by_day: dict[datetime.date, list[dict]] = {}
+    for dt, meta in items:
+        day = timezone.localtime(dt).date()
+        by_day.setdefault(day, []).append(meta)
 
-    # Group by day number for template
-    by_day = {}
-    for dt, cd in items:
-        by_day.setdefault(dt.day, []).append((dt, cd))
-    days_data = [{"day": d, "items": by_day.get(d, [])} for d in range(1, days_in_month + 1)]
-
-    # Prev/Next helpers
-    prev_y, prev_m = (y - 1, 12) if m == 1 else (y, m - 1)
-    next_y, next_m = (y + 1, 1)  if m == 12 else (y, m + 1)
-
-    ctx = {
-        "year": y,
-        "month": m,
-        "offset_range": range(first_day.weekday()),  # Monday=0
-        "days_data": days_data,
-        "prev_y": prev_y, "prev_m": prev_m,
-        "next_y": next_y, "next_m": next_m,
-        "today": today,
-    }
-    return render(request, "people/_tab_calendar_global.html", ctx)
+    return render(request, "people/_calendar_global.html", {
+        "items": items,
+        "by_day": by_day,
+        "start": start,
+        "end": end,
+    })
 
 @login_required
 def person_calendar_ics(request, person_pk):
