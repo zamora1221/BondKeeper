@@ -9,17 +9,34 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get("SECRET_KEY")
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
+RENDER_HOST = "https://bondkeeper9.onrender.com"  # <-- put your actual Render URL here
+
 ALLOWED_HOSTS = [
-    h.strip()
-    for h in os.getenv("ALLOWED_HOSTS", ".onrender.com,localhost,127.0.0.1").split(",")
-    if h.strip()
+    RENDER_HOST,
+    ".onrender.com",
+    "localhost",
+    "127.0.0.1",
+    # optional if you also test via tunnels:
+    # ".ngrok-free.app",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    o.strip()
-    for o in os.getenv("CSRF_TRUSTED_ORIGINS", "https://*.onrender.com").split(",")
-    if o.strip()
+    f"https://{RENDER_HOST}",
+    "https://*.onrender.com",
+    # optional for tunnels:
+    # "https://*.ngrok-free.app",
 ]
+
+# Tell Django it's behind a TLS-terminating proxy (Render)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+
+# Cookies must be secure so your auth session is sent on the partial GETs
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
+# Redirect http->https (Render forwards X-Forwarded-Proto)
+SECURE_SSL_REDIRECT = True
 
 INSTALLED_APPS = [
     'django.contrib.admin',
