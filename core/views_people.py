@@ -938,6 +938,7 @@ def person_calendar_partial(request, person_pk):
         "today": today,
     }
     return render(request, "people/_tab_calendar.html", ctx)
+from django.views.decorators.http import require_GET
 
 @login_required
 @require_GET
