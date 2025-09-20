@@ -223,12 +223,11 @@
 </div>
 <div id="subtab-calendar-global"
      class="subtab-pane"
-     hx-get="{% url 'calendar_partial' %}"
-     hx-trigger="revealed once"
-     hx-target="#subtab-calendar-global"
-     hx-swap="innerHTML">
+     data-url="{% url 'calendar_partial' %}"
+     hx-on::after-request="if (event.detail.xhr.status >= 400) this.innerHTML = '<div class=\'muted\' style=\'color:#b91c1c\'>Could not load calendar ('+event.detail.xhr.status+')</div>';">
   <div class="muted">Loading calendar…</div>
 </div>
+
   <div id="subtab-reports"
      class="subtab-pane"
      hx-get="{% url 'reports_panel' %}"
