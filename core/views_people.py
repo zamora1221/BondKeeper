@@ -940,59 +940,81 @@ def person_calendar_partial(request, person_pk):
 from django.views.decorators.http import require_GET
 
 @login_required
-@require_GET
+@require_http_methods(["GET"])
 def calendar_partial(request):
-    tenant = getattr(request, "tenant", None)
-    if tenant is None and hasattr(request.user, "tenant_profile"):
-        tenant = request.user.tenant_profile
+    # ----- figure out which month to show -----
+    # Accept ?month=YYYY-MM (e.g., 2025-09); default = today’s month (tenant-local)
+    today_local = timezone.localdate()
+    month_str = request.GET.get("month")
+    if month_str:
+        try:
+            yyyy, mm = map(int, month_str.split("-"))
+            month_start = date(yyyy, mm, 1)
+        except Exception:
+            month_start = today_local.replace(day=1)
+    else:
+        month_start = today_local.replace(day=1)
 
-    now = timezone.now()
-    start = timezone.localdate(now) - dt.timedelta(days=7)
-    end   = timezone.localdate(now) + dt.timedelta(days=90)
+    # prev/next month
+    def add_months(d: date, n: int) -> date:
+        m = (d.month - 1 + n) % 12 + 1
+        y = d.year + (d.month - 1 + n) // 12
+        return date(y, m, 1)
 
-    court_dates_qs = (
-        CourtDate.objects
-        .filter(tenant=tenant, date__gte=start, date__lte=end)
-        .select_related("person")
-        .order_by("date", "time", "id")
-    )
+    prev_month = add_months(month_start, -1)
+    next_month = add_months(month_start, 1)
 
-    # Make aware datetimes for start/end bounds
-    start_dt = _ensure_aware(dt.datetime.combine(start, dt.time(0, 0)))
-    end_dt   = _ensure_aware(dt.datetime.combine(end,   dt.time(23, 59, 59)))
+    # Build a 6-week grid starting from the Sunday before/at month_start
+    # (Sunday=0 ... Saturday=6)
+    # Python's weekday() => Monday=0..Sunday=6, so convert to Sunday=0
+    dow_mon0 = month_start.weekday()          # Mon=0..Sun=6
+    dow_sun0 = (dow_mon0 + 1) % 7             # Sun=0..Sat=6
+    grid_start = month_start - timedelta(days=dow_sun0)
+    days = [grid_start + timedelta(days=i) for i in range(42)]  # 6 weeks x 7 days
+    month_end = add_months(month_start, 1) - timedelta(days=1)
 
-    checkins_qs = (
-        CheckIn.objects
-        .filter(tenant=tenant, created_at__gte=start_dt, created_at__lte=end_dt)
-        .select_related("person")
-        .order_by("-created_at")
-    )
+    # ----- your existing data build (example) -----
+    # Build items/by_day from your models (CourtDate, etc.)
+    # Keep what you already had that produced `items` and `by_day`.
+    # Below is a minimal example to illustrate structure:
+    from core.models import CourtDate, Person
 
-    items: list[tuple[dt.datetime, dict]] = []
+    # Show one month + a bit of buffer (grid range)
+    start = days[0]
+    end = days[-1]
 
-    for cd in court_dates_qs:
-        when = _combine_date_time_aware(cd.date, cd.time)
-        if when:
-            items.append((when, {"type": "court", "dt": when, "obj": cd, "person": cd.person}))
+    # Query and normalize to local date
+    cds = CourtDate.objects.filter(date__gte=start, date__lte=end).select_related("person").order_by("date", "time", "id")
 
-    for ci in checkins_qs:
-        when = _ensure_aware(ci.created_at)
-        if when:
-            items.append((when, {"type": "checkin", "dt": when, "obj": ci, "person": ci.person}))
+    by_day = {}
+    items = []  # optional: if you still want the flat list as well
+    for cd in cds:
+        d = cd.date  # already a date
+        by_day.setdefault(d, []).append(cd)
+        items.append(cd)
 
-    items.sort(key=lambda x: x[0])
+    # URLs for prev/next (htmx)
+    prev_qs = f"?month={prev_month.strftime('%Y-%m')}"
+    next_qs = f"?month={next_month.strftime('%Y-%m')}"
 
-    by_day: dict[dt.date, list[dict]] = {}
-    for when, meta in items:
-        day = timezone.localtime(when).date()
-        by_day.setdefault(day, []).append(meta)
-
-    return render(request, "people/_calendar_global.html", {
-        "items": items,
+    ctx = {
+        "days": days,
+        "month_start": month_start,
+        "month_end": month_end,
+        "today": today_local,
         "by_day": by_day,
-        "start": start,
-        "end": end,
-    })
+        "items": items,           # still available, not required by the grid
+        "prev_qs": prev_qs,
+        "next_qs": next_qs,
+    }
+
+    try:
+        tpl = loader.select_template(["people/_calendar_global.html"])
+        return HttpResponse(tpl.render(ctx, request))
+    except TemplateDoesNotExist:
+        # Safety fallback while deploying templates
+        return HttpResponse("<div class='muted'>Calendar template missing (people/_calendar_global.html).</div>")
+        
 @login_required
 def person_calendar_ics(request, person_pk):
     """ICS feed for a single person's court dates."""
