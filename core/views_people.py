@@ -959,21 +959,21 @@ def calendar_partial(request):
     # Collect all court dates in this month
     items = []
 
-# Example for CourtDate entries:
-for cd in court_dates_qs:
-    dt = _combine_date_time_aware(cd.date, cd.time)   # <-- ensure aware
-    if dt:
-        items.append((dt, {"type": "court", "obj": cd}))
+    # Court dates -> aware datetimes
+    for cd in court_dates_qs:
+        dt = _combine_date_time_aware(cd.date, cd.time)  # returns aware dt (see helper we added)
+        if dt:
+            items.append((dt, {"type": "court", "obj": cd}))
 
-# Example for CheckIn (already aware, but normalize anyway):
-for ci in checkins_qs:
-    dt = _ensure_aware(ci.created_at)                 # <-- ensure aware
-    if dt:
-        items.append((dt, {"type": "checkin", "obj": ci}))
+    # Check-ins -> already aware, but normalize
+    for ci in checkins_qs:
+        dt = _ensure_aware(ci.created_at)
+        if dt:
+            items.append((dt, {"type": "checkin", "obj": ci}))
 
-# (Do the same for any other sources you include.)
-# Finally, sort safely:
-items.sort(key=lambda x: x[0])
+    # (Do the same for any other sources you include.)
+    # Finally, sort safely:
+    items.sort(key=lambda x: x[0])
 
 
     # Group by day number for template
