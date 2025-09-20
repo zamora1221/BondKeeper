@@ -942,80 +942,81 @@ def person_calendar_partial(request, person_pk):
 from django.views.decorators.http import require_GET
 
 @login_required
-@require_http_methods(["GET"])
+@require_GET
 def calendar_partial(request):
-    # ----- figure out which month to show -----
-    # Accept ?month=YYYY-MM (e.g., 2025-09); default = today’s month (tenant-local)
+    """
+    Global month calendar (6x7 grid) of all court dates for the current tenant.
+    ?m=YYYY-MM-01 to navigate months.
+    """
+    # --- Resolve month to show ---
     today_local = timezone.localdate()
-    month_str = request.GET.get("month")
-    if month_str:
+    m_param = request.GET.get("m")
+    if m_param:
         try:
-            yyyy, mm = map(int, month_str.split("-"))
-            month_start = date(yyyy, mm, 1)
+            y, m, _ = [int(x) for x in m_param.split("-")]
+            month_start = date(y, m, 1)
         except Exception:
             month_start = today_local.replace(day=1)
     else:
         month_start = today_local.replace(day=1)
 
-    # prev/next month
-    def add_months(d: date, n: int) -> date:
-        m = (d.month - 1 + n) % 12 + 1
-        y = d.year + (d.month - 1 + n) // 12
+    # Grid starts on the previous Sunday
+    days_back = (month_start.weekday() + 1) % 7  # Monday=0..Sunday=6 -> 0 back if Sunday
+    grid_start = month_start - timedelta(days=days_back)
+    grid_end = grid_start + timedelta(days=41)    # 6 weeks * 7 - 1
+
+    # All 42 cells
+    days = [grid_start + timedelta(days=i) for i in range(42)]
+
+    # --- Pull court dates in range for this tenant ---
+    qs = (CourtDate.objects
+          .filter(tenant=request.tenant, date__gte=grid_start, date__lte=grid_end)
+          .select_related("person")
+          .order_by("date", "time", "id"))
+
+    # Bucket by day + also keep a flat list (sorted) if needed
+    by_day = {}
+    flat_items = []
+    for cd in qs:
+        by_day.setdefault(cd.date, []).append(cd)
+        flat_items.append((cd.date, cd.time or dtime(0, 0), cd))
+    flat_items.sort(key=lambda t: (t[0], t[1]))
+
+    # Template-friendly grid objects
+    grid = [{
+        "date": d,
+        "items": by_day.get(d, []),
+        "is_other": (d.month != month_start.month),
+        "is_today": (d == today_local),
+    } for d in days]
+
+    # Prev/next month querystrings
+    def month_add(d: date, delta: int) -> date:
+        y = d.year + (d.month - 1 + delta) // 12
+        m = (d.month - 1 + delta) % 12 + 1
         return date(y, m, 1)
 
-    prev_month = add_months(month_start, -1)
-    next_month = add_months(month_start, 1)
+    prev_m = month_add(month_start, -1)
+    next_m = month_add(month_start, 1)
+    prev_qs = f"?m={prev_m.isoformat()}"
+    next_qs = f"?m={next_m.isoformat()}"
 
-    # Build a 6-week grid starting from the Sunday before/at month_start
-    # (Sunday=0 ... Saturday=6)
-    # Python's weekday() => Monday=0..Sunday=6, so convert to Sunday=0
-    dow_mon0 = month_start.weekday()          # Mon=0..Sun=6
-    dow_sun0 = (dow_mon0 + 1) % 7             # Sun=0..Sat=6
-    grid_start = month_start - timedelta(days=dow_sun0)
-    days = [grid_start + timedelta(days=i) for i in range(42)]  # 6 weeks x 7 days
-    month_end = add_months(month_start, 1) - timedelta(days=1)
-
-    # ----- your existing data build (example) -----
-    # Build items/by_day from your models (CourtDate, etc.)
-    # Keep what you already had that produced `items` and `by_day`.
-    # Below is a minimal example to illustrate structure:
-    from core.models import CourtDate, Person
-
-    # Show one month + a bit of buffer (grid range)
-    start = days[0]
-    end = days[-1]
-
-    # Query and normalize to local date
-    cds = CourtDate.objects.filter(date__gte=start, date__lte=end).select_related("person").order_by("date", "time", "id")
-
-    by_day = {}
-    items = []  # optional: if you still want the flat list as well
-    for cd in cds:
-        d = cd.date  # already a date
-        by_day.setdefault(d, []).append(cd)
-        items.append(cd)
-
-    # URLs for prev/next (htmx)
-    prev_qs = f"?month={prev_month.strftime('%Y-%m')}"
-    next_qs = f"?month={next_month.strftime('%Y-%m')}"
+    # Day-of-week header labels (Sun..Sat)
+    dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
     ctx = {
-        "days": days,
+        "dows": dows,
+        "grid": grid,
         "month_start": month_start,
-        "month_end": month_end,
+        "month_end": month_add(month_start, 1) - timedelta(days=1),
         "today": today_local,
-        "by_day": by_day,
-        "items": items,           # still available, not required by the grid
+        "items": [t[2] for t in flat_items],  # optional flat list
         "prev_qs": prev_qs,
         "next_qs": next_qs,
     }
 
-    try:
-        tpl = loader.select_template(["people/_calendar_global.html"])
-        return HttpResponse(tpl.render(ctx, request))
-    except TemplateDoesNotExist:
-        # Safety fallback while deploying templates
-        return HttpResponse("<div class='muted'>Calendar template missing (people/_calendar_global.html).</div>")
+    tpl = loader.select_template(["people/_calendar_global.html"])
+    return HttpResponse(tpl.render(ctx, request))
         
 @login_required
 def person_calendar_ics(request, person_pk):
