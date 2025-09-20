@@ -1,0 +1,14 @@
+{# Initial shell that loads the widget once on page load #}
+<div id="recent-court-date"
+     hx-get="{% url 'court_date_recent_widget' person.pk %}"
+     hx-trigger="load"
+     hx-target="#recent-court-date"
+     hx-swap="outerHTML"
+>
+  <div class="card" style="min-width:240px">
+    <div class="card-header"><strong>Most Recent Court Date</strong></div>
+    <div class="card-body">
+      <span class="muted">Loading…</span>
+    </div>
+  </div>
+</div>
